@@ -1,3 +1,4 @@
+import { isAndroidRTL } from "../platform/reactnative/Utils";
 import BinarySearch from "../utils/BinarySearch";
 import { Dimension } from "./dependencies/LayoutProvider";
 import { Layout } from "./layoutmanager/LayoutManager";
@@ -65,8 +66,12 @@ export default class ViewabilityTracker {
     }
 
     public setLayouts(layouts: Layout[], maxOffset: number): void {
+        const preMaxOffset = this._maxOffset;
         this._layouts = layouts;
         this._maxOffset = maxOffset;
+        if (isAndroidRTL() && preMaxOffset > 0) {
+            this.updateOffset(this._currentOffset + (maxOffset - preMaxOffset), false, this._defaultCorrection);
+        }
     }
 
     public setDimensions(dimension: Dimension, isHorizontal: boolean): void {
@@ -164,8 +169,20 @@ export default class ViewabilityTracker {
     private _fitAndUpdate(startIndex: number): void {
         const newVisibleItems: number[] = [];
         const newEngagedItems: number[] = [];
+        const count = this._layouts.length;
         this._fitIndexes(newVisibleItems, newEngagedItems, startIndex, true);
         this._fitIndexes(newVisibleItems, newEngagedItems, startIndex + 1, false);
+        if (isAndroidRTL()) {
+            for (let index = 0; index < newVisibleItems.length; index++) {
+                newVisibleItems[index] = count - 1 - newVisibleItems[index];
+            }
+            for (let index = 0; index < newEngagedItems.length; index++) {
+                newEngagedItems[index] = count - 1 - newEngagedItems[index];
+            }
+
+            newVisibleItems.reverse()
+            newEngagedItems.reverse()
+        }
         this._diffUpdateOriginalIndexesAndRaiseEvents(newVisibleItems, newEngagedItems);
     }
 

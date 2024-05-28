@@ -42,6 +42,7 @@ import ScrollComponent from "../platform/reactnative/scrollcomponent/ScrollCompo
 import ViewRenderer from "../platform/reactnative/viewrenderer/ViewRenderer";
 import { DefaultJSItemAnimator as DefaultItemAnimator } from "../platform/reactnative/itemanimators/defaultjsanimator/DefaultJSItemAnimator";
 import { Platform } from "react-native";
+import { isAndroidRTL } from "../platform/reactnative/Utils";
 const IS_WEB = !Platform || Platform.OS === "web";
 //#endif
 
@@ -150,7 +151,7 @@ export default class RecyclerListView<P extends RecyclerListViewProps, S extends
     });
 
     private _virtualRenderer: VirtualRenderer;
-    private _onEndReachedCalled = false;
+    private _onEndReachedCalled = isAndroidRTL()
     private _initComplete = false;
     private _isMounted = true;
     private _relayoutReqIndex: number = -1;
@@ -174,6 +175,12 @@ export default class RecyclerListView<P extends RecyclerListViewProps, S extends
     //by the default item animator also changes the same positions which could lead to inconsistency. Hence, the base item animator which
     //does not perform any such animations will be used.
     private _defaultItemAnimator: ItemAnimator = new BaseItemAnimator();
+    // In android RTL, it not scroll to end
+    //   this flag is for doing scroll to end manual
+    private _needScrollToEndManaul: Boolean = isAndroidRTL();
+    // In android RTL, when total width changed, Android Native pass wrong offset which less a screen size.
+    //  this flag is for adding the less screen size.
+    private _needAddScreenWidth: Boolean = false;
 
     constructor(props: P, context?: any) {
         super(props, context);
@@ -232,8 +239,8 @@ export default class RecyclerListView<P extends RecyclerListViewProps, S extends
 
     public componentDidUpdate(): void {
         this._processInitialOffset();
-        this._processOnEndReached();
         this._checkAndChangeLayouts(this.props);
+        this._processOnEndReached();
         this._virtualRenderer.setOptimizeForAnimations(false);
     }
 
@@ -523,6 +530,8 @@ export default class RecyclerListView<P extends RecyclerListViewProps, S extends
             if (layoutManager) {
                 layoutManager.relayoutFromIndex(newProps.dataProvider.getFirstIndexToProcessInternal(), newProps.dataProvider.getSize());
                 this._virtualRenderer.refresh();
+                // dataProvider changed, should update this flag
+                this._needAddScreenWidth = isAndroidRTL();
             }
         } else if (forceFullRender) {
             const layoutManager = this._virtualRenderer.getLayoutManager();
@@ -759,6 +768,18 @@ export default class RecyclerListView<P extends RecyclerListViewProps, S extends
             this.props.onScroll(rawEvent, offsetX, offsetY);
         }
         this._processOnEndReached();
+
+        if (this._needScrollToEndManaul && offsetX > 1) {
+            this._needScrollToEndManaul = false;
+            this.scrollToEnd();
+        }
+
+        if (this._needAddScreenWidth && offsetX > 1) {
+            this._needAddScreenWidth = false;
+            const dimension = this._layout;
+            const size = this.props.isHorizontal ? dimension.width : dimension.height
+            this.scrollToOffset(offsetX + size, offsetY)
+        }
     }
 
     private _processOnEndReached(): void {
@@ -768,7 +789,7 @@ export default class RecyclerListView<P extends RecyclerListViewProps, S extends
             if (viewabilityTracker) {
                 const windowBound = this.props.isHorizontal ? layout.width - this._layout.width : layout.height - this._layout.height;
                 const lastOffset = viewabilityTracker ? viewabilityTracker.getLastOffset() : 0;
-                const threshold = windowBound - lastOffset;
+                const threshold = isAndroidRTL() ? lastOffset : windowBound - lastOffset;
 
                 const listLength = this.props.isHorizontal ? this._layout.width : this._layout.height;
                 const triggerOnEndThresholdRelative = listLength * Default.value<number>(this.props.onEndReachedThresholdRelative, 0);
