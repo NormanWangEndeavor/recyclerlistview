@@ -42,6 +42,7 @@ import ScrollComponent from "../platform/reactnative/scrollcomponent/ScrollCompo
 import ViewRenderer from "../platform/reactnative/viewrenderer/ViewRenderer";
 import { DefaultJSItemAnimator as DefaultItemAnimator } from "../platform/reactnative/itemanimators/defaultjsanimator/DefaultJSItemAnimator";
 import { Platform } from "react-native";
+import { isAndroidRTL } from "../platform/reactnative/Utils";
 const IS_WEB = !Platform || Platform.OS === "web";
 //#endif
 
@@ -150,7 +151,7 @@ export default class RecyclerListView<P extends RecyclerListViewProps, S extends
     });
 
     private _virtualRenderer: VirtualRenderer;
-    private _onEndReachedCalled = false;
+    private _onEndReachedCalled = isAndroidRTL();
     private _initComplete = false;
     private _isMounted = true;
     private _relayoutReqIndex: number = -1;
@@ -232,8 +233,14 @@ export default class RecyclerListView<P extends RecyclerListViewProps, S extends
 
     public componentDidUpdate(): void {
         this._processInitialOffset();
-        this._processOnEndReached();
-        this._checkAndChangeLayouts(this.props);
+        if (isAndroidRTL()) {
+            // In Android RTL run "_checkAndChangeLayouts" first, fix onEndReached called twice issues.
+            this._checkAndChangeLayouts(this.props);
+            this._processOnEndReached();
+        } else {
+            this._processOnEndReached();
+            this._checkAndChangeLayouts(this.props);
+        }
         this._virtualRenderer.setOptimizeForAnimations(false);
     }
 
@@ -768,7 +775,7 @@ export default class RecyclerListView<P extends RecyclerListViewProps, S extends
             if (viewabilityTracker) {
                 const windowBound = this.props.isHorizontal ? layout.width - this._layout.width : layout.height - this._layout.height;
                 const lastOffset = viewabilityTracker ? viewabilityTracker.getLastOffset() : 0;
-                const threshold = windowBound - lastOffset;
+                const threshold = isAndroidRTL() ? lastOffset : windowBound - lastOffset;
 
                 const listLength = this.props.isHorizontal ? this._layout.width : this._layout.height;
                 const triggerOnEndThresholdRelative = listLength * Default.value<number>(this.props.onEndReachedThresholdRelative, 0);
